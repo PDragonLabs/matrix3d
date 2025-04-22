@@ -1,0 +1,247 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix 3D Web Portal</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #000; }
+        canvas { display: block; }
+        #matrixCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #0F0;
+            z-index: 10;
+        }
+        #ui button {
+            font-family: monospace;
+            color: #0F0;
+            background: #000;
+            border: 1px solid #0F0;
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            border-radius: 0;
+        }
+        #ui button:hover {
+            background: #0F0;
+            color: #000;
+        }
+        #status {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #0F0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrixCanvas"></canvas>
+    <div id="ui">
+        <button onclick="selectPage(0)">Page 1</button>
+        <button onclick="selectPage(1)">Page 2</button>
+        <button onclick="selectPage(2)">Page 3</button>
+        <button onclick="selectPage(3)">Page 4</button>
+        <button onclick="selectPage(4)">Page 5</button>
+    </div>
+    <div id="status">Loading...</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0);
+        document.body.appendChild(renderer.domElement);
+
+        // Matrix background setup
+        const matrixCanvas = document.getElementById('matrixCanvas');
+        matrixCanvas.width = window.innerWidth;
+        matrixCanvas.height = window.innerHeight;
+        const ctx = matrixCanvas.getContext('2d');
+        ctx.font = '15px monospace';
+        const columnWidth = 15;
+        let columns = Math.floor(window.innerWidth / columnWidth);
+        let drops = [];
+        for(let i=0; i<columns; i++) {
+            drops[i] = Math.floor(Math.random() * (window.innerHeight / 15));
+        }
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        function randomChar() {
+            return chars[Math.floor(Math.random() * chars.length)];
+        }
+
+        // Create a cube with 5 faces
+        const geometry = new THREE.BoxGeometry(5, 5, 5);
+        const sites = [
+            'https://www.example.com',
+            'https://www.wikipedia.org',
+            'https://www.github.com',
+            'https://www.stackoverflow.com',
+            'https://www.reddit.com'
+        ];
+
+        const materials = sites.map((url, i) => {
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.style.position = 'absolute';
+            iframe.style.width = '512px';
+            iframe.style.height = '512px';
+            iframe.style.opacity = '0';
+            document.body.appendChild(iframe);
+
+            const texture = new THREE.Texture(iframe);
+            texture.needsUpdate = true;
+            return new THREE.MeshBasicMaterial({ map: texture });
+        });
+
+        // Add a transparent material for the 6th face
+        materials.push(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
+
+        const cube = new THREE.Mesh(geometry, materials);
+        scene.add(cube);
+        camera.position.z = 10;
+
+        // Animation variables
+        let targetRotation = { x: 0, y: 0 };
+        let currentRotation = { x: 0, y: 0 };
+        let autoRotate = true;
+
+        // Page selection
+        function selectPage(index) {
+            autoRotate = false;
+            const angles = [
+                { x: 0, y: 0 },        // Front
+                { x: 0, y: Math.PI / 2 }, // Right
+                { x: 0, y: -Math.PI / 2 }, // Left
+                { x: Math.PI / 2, y: 0 }, // Top
+                { x: -Math.PI / 2, y: 0 }  // Bottom
+            ];
+            targetRotation = angles[index];
+            updateStatus(`Viewing: ${sites[index]}`);
+        }
+
+        // Status update
+        function updateStatus(message) {
+            document.getElementById('status').innerText = message;
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Matrix effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
+            ctx.fillStyle = '#0F0';
+            for(let i=0; i<columns; i++) {
+                const x = i * columnWidth;
+                const y = drops[i] * 15;
+                ctx.fillText(randomChar(), x, y);
+                drops[i]++;
+                if(drops[i] * 15 > matrixCanvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+            }
+
+            if (autoRotate) {
+                cube.rotation.y += 0.01;
+            } else {
+                currentRotation.x += (targetRotation.x - currentRotation.x) * 0.1;
+                currentRotation.y += (targetRotation.y - currentRotation.y) * 0.1;
+                cube.rotation.x = currentRotation.x;
+                cube.rotation.y = currentRotation.y;
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            matrixCanvas.width = window.innerWidth;
+            matrixCanvas.height = window.innerHeight;
+            columns = Math.floor(window.innerWidth / columnWidth);
+            drops = [];
+            for(let i=0; i<columns; i++) {
+                drops[i] = Math.floor(Math.random() * (window.innerHeight / 15));
+            }
+        });
+
+        // Mouse controls
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        document.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            autoRotate = false;
+            previousMousePosition = { x: e.clientX, y: e.clientY };
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaMove = {
+                    x: e.clientX - previousMousePosition.x,
+                    y: e.clientY - previousMousePosition.y
+                };
+                targetRotation.y += deltaMove.x * 0.01;
+                targetRotation.x += deltaMove.y * 0.01;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // Initial status
+        updateStatus('Auto-rotating: Click buttons to view a page');
+    </script>
+</body>
+</html>
