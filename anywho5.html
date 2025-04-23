@@ -1,0 +1,311 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DrakeVortex 3D Matrix Portal</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; font-family: 'Courier New', monospace; }
+    canvas { display: block; position: absolute; top: 100px; left: 0; width: 100%; height: 200px; }
+    #header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 60px;
+      background: #0a0a0a;
+      border-bottom: 2px solid lime;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 10px lime;
+      z-index: 1000;
+    }
+    #header h1 {
+      color: lime;
+      font-size: 24px;
+      margin: 0;
+      text-shadow: 0 0 5px lime;
+    }
+    #links {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      width: 100%;
+      height: 40px;
+      background: #0a0a0a;
+      border-bottom: 1px solid lime;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    #links button {
+      background: #0f0;
+      color: black;
+      border: 1px solid lime;
+      padding: 6px 10px;
+      margin: 0 10px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      text-transform: uppercase;
+      transition: all 0.3s;
+    }
+    #links button:hover {
+      background: lime;
+      box-shadow: 0 0 8px lime;
+    }
+    #digital-rain {
+      position: fixed;
+      top: 100px;
+      left: 0;
+      width: 100%;
+      height: calc(100% - 100px);
+      opacity: 0.2;
+      z-index: 998;
+    }
+    #content-panels {
+      position: absolute;
+      top: 300px;
+      left: 0;
+      width: 100%;
+      height: calc(100% - 300px);
+      display: flex;
+      flex-direction: row;
+      z-index: 999;
+    }
+    .panel {
+      width: 50%;
+      height: 100%;
+      background: #0a0a0a;
+      border: 1px solid lime;
+      overflow: auto;
+    }
+    .panel iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .panel .fallback {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: lime;
+    }
+    .panel .fallback img {
+      max-width: 90%;
+      max-height: 80%;
+      object-fit: contain;
+    }
+    .panel .fallback p {
+      margin: 10px 0;
+      font-size: 16px;
+    }
+    .panel .proxy-content {
+      color: lime;
+      padding: 20px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>DrakeVortex Matrix Portal</h1>
+  </div>
+  <div id="links">
+    <button onclick="loadContent(0, 'left')">Wikipedia</button>
+    <button onclick="loadContent(1, 'right')">Google News</button>
+  </div>
+  <canvas id="digital-rain"></canvas>
+  <div id="content-panels">
+    <div class="panel" id="left">
+      <iframe src="about:blank"></iframe>
+      <div class="fallback" style="display: none;">
+        <img src="images/wiki.png" alt="Wikipedia">
+        <p>Click to view Wikipedia</p>
+      </div>
+      <div class="proxy-content" style="display: none;"></div>
+    </div>
+    <div class="panel" id="right">
+      <iframe src="about:blank"></iframe>
+      <div class="fallback" style="display: none;">
+        <img src="images/news.png" alt="Google News">
+        <p>Click to view Google News</p>
+      </div>
+      <div class="proxy-content" style="display: none;"></div>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script>
+    // Digital Rain Background
+    const rainCanvas = document.getElementById('digital-rain');
+    const rainCtx = rainCanvas.getContext('2d');
+    rainCanvas.width = window.innerWidth;
+    rainCanvas.height = window.innerHeight - 100;
+    const chars = '0101abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const fontSize = 14;
+    const columns = rainCanvas.width / fontSize;
+    const drops = Array(Math.floor(columns)).fill(1);
+    function drawRain() {
+      rainCtx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      rainCtx.fillRect(0, 0, rainCanvas.width, rainCanvas.height);
+      rainCtx.fillStyle = '#0f0';
+      rainCtx.font = fontSize + 'px Courier New';
+      for (let i = 0; i < drops.length; i++) {
+        const text = chars.charAt(Math.floor(Math.random() * chars.length));
+        rainCtx.fillText(text, i * fontSize, drops[i] * fontSize);
+        if (drops[i] * fontSize > rainCanvas.height && Math.random() > 0.975)
+          drops[i] = 0;
+        drops[i]++;
+      }
+    }
+    setInterval(drawRain, 33);
+
+    // 3D Cube
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / 200, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, 200);
+    document.body.appendChild(renderer.domElement);
+
+    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    const materials = [
+      new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('images/wiki.png') }),
+      new THREE.MeshBasicMaterial({ map: new THREE.TextureLoader().load('images/news.png') }),
+    ];
+    const cube = new THREE.Mesh(geometry, materials);
+    scene.add(cube);
+    camera.position.set(3, 1, 3);
+    camera.lookAt(0, 0, 0);
+
+    const sites = [
+      { url: 'https://en.wikipedia.org', img: 'images/wiki.png', proxy: false, name: 'Wikipedia' },
+      { url: 'https://news.google.com', img: 'images/news.png', proxy: true, name: 'Google News' },
+    ];
+
+    function loadContent(index, panelId) {
+      const panel = document.querySelector(`#${panelId}`);
+      const iframe = panel.querySelector('iframe');
+      const fallback = panel.querySelector('.fallback');
+      const fallbackImg = fallback.querySelector('img');
+      const fallbackText = fallback.querySelector('p');
+      const proxyContent = panel.querySelector('.proxy-content');
+
+      // Rotate cube to show clicked face
+      const angles = [
+        { x: 0, y: 0 }, // Wikipedia
+        { x: 0, y: Math.PI / 2 }, // Google News
+      ];
+      cube.rotation.set(angles[index].x, angles[index].y, 0);
+
+      // Reset displays
+      iframe.style.display = 'none';
+      fallback.style.display = 'none';
+      proxyContent.style.display = 'none';
+
+      if (sites[index].proxy) {
+        // Fetch Google News via proxy
+        //const proxyUrl = `https://your-vercel-app.vercel.app/api/proxy?url=${encodeURIComponent(sites[index].url)}`;
+        const proxyUrl = `https://pdragonlabs-proxy.vercel.app/api/proxy?url=${encodeURIComponent(sites[index].url)}`;
+        fetch(proxyUrl)
+          .then(response => response.text())
+          .then(html => {
+            // Extract simplified content (e.g., headlines)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const headlines = doc.querySelectorAll('h3, h4, a');
+            let content = '<h2 style="color: lime;">Google News Snapshot</h2>';
+            headlines.forEach(h => {
+              if (h.textContent.trim()) {
+                content += `<p>${h.textContent.trim()}</p>`;
+              }
+            });
+            proxyContent.innerHTML = content;
+            proxyContent.style.display = 'block';
+          })
+          .catch(() => {
+            fallbackImg.src = sites[index].img;
+            fallbackText.textContent = `View ${sites[index].name}`;
+            fallback.style.display = 'block';
+          });
+      } else {
+        // Try iframe for Wikipedia
+        iframe.src = sites[index].url;
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow.document;
+            iframe.style.display = 'block';
+          } catch (e) {
+            fallbackImg.src = sites[index].img;
+            fallbackText.textContent = `View ${sites[index].name}`;
+            fallback.style.display = 'block';
+          }
+        };
+        iframe.onerror = () => {
+          fallbackImg.src = sites[index].img;
+          fallbackText.textContent = `View ${sites[index].name}`;
+          fallback.style.display = 'block';
+        };
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      cube.rotation.y += 0.01;
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize Handling
+    window.addEventListener('resize', () => {
+      rainCanvas.width = window.innerWidth;
+      rainCanvas.height = window.innerHeight - 100;
+      camera.aspect = window.innerWidth / 200;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, 200);
+    });
+  </script>
+</body>
+</html>
