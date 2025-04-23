@@ -72,6 +72,8 @@
             color: #0F0;
             font-size: 24px;
             text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
         }
     </style>
 </head>
@@ -106,23 +108,16 @@
         const sites = [
             'https://en.wikipedia.org/wiki/Main_Page',
             'https://news.google.com/foryou?hl=en-US&gl=US&ceid=US%3Aen',
-            'https://www.freecodecamp.org/learn/',
-            'https://www.khanacademy.org/computing',
+            'https://www.example.com',
+            'https://www.example.com',
             'https://www.example.com'
         ];
         const siteNames = [
             'Wikipedia',
-            'W3Schools HTML',
-            'FreeCodeCamp',
-            'Khan Academy',
-            'Example'
-        ];
-        const fallbacks = [
-            'images/fallback1.png',
-            'images/fallback2.png',
-            'images/fallback3.png',
-            'images/fallback4.png',
-            'images/fallback5.png'
+            'W3Schools HTML Intro',
+            'Example 1',
+            'Example 2',
+            'Example 3'
         ];
 
         // Create iframes
@@ -134,26 +129,8 @@
             iframe.src = url;
             iframe.onload = () => updateStatus(`Loaded: ${siteNames[index]} (${url})`);
             iframe.onerror = () => {
-                let fallbackContent;
-                try {
-                    const img = document.createElement('img');
-                    img.src = fallbacks[index];
-                    img.className = 'fallback';
-                    img.alt = `Fallback for ${siteNames[index]}`;
-                    img.onerror = () => {
-                        wrapper.innerHTML = `<div class="fallback">Unable to load ${siteNames[index]} (CORS restricted)</div>`;
-                        updateStatus(`Failed to load: ${siteNames[index]} (no image, showing text)`);
-                    };
-                    fallbackContent = img;
-                } catch (e) {
-                    fallbackContent = document.createElement('div');
-                    fallbackContent.className = 'fallback';
-                    fallbackContent.innerText = `Unable to load ${siteNames[index]} (CORS restricted)`;
-                    updateStatus(`Failed to load: ${siteNames[index]} (no image, showing text)`);
-                }
-                wrapper.innerHTML = '';
-                wrapper.appendChild(fallbackContent);
-                updateStatus(`Failed to load: ${siteNames[index]} (showing fallback)`);
+                wrapper.innerHTML = `<div class="fallback">Unable to load ${siteNames[index]}: Embedding blocked by site (X-Frame-Options or CSP)</div>`;
+                updateStatus(`Failed to load: ${siteNames[index]} (showing text fallback)`);
             };
             wrapper.appendChild(iframe);
             iframeContainer.appendChild(wrapper);
