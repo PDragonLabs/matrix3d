@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Matrix 3D Web Portal</title>
+    <title>Matrix Web Portal</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: monospace; background: #000; }
-        canvas { display: block; }
         #matrixCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
         #ui {
             position: absolute;
@@ -37,6 +36,43 @@
             font-size: 14px;
             font-family: monospace;
         }
+        #iframeContainer {
+            position: absolute;
+            width: 80%;
+            height: 80%;
+            top: 10%;
+            left: 10%;
+            perspective: 1000px;
+            z-index: 5;
+        }
+        .iframeWrapper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s ease-in-out;
+            transform-style: preserve-3d;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: 2px solid #0F0;
+            background: #000;
+            box-sizing: border-box;
+        }
+        .hidden { transform: translateZ(-1000px) rotateY(90deg); }
+        .visible { transform: translateZ(0) rotateY(0deg); }
+        .fallback {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            border: 2px solid #0F0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #0F0;
+            font-size: 24px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -47,19 +83,11 @@
         <button onclick="selectPage(2)">Page 3</button>
         <button onclick="selectPage(3)">Page 4</button>
         <button onclick="selectPage(4)">Page 5</button>
-        <button onclick="toggleIframes()">Toggle Iframes</button>
     </div>
     <div id="status">Loading...</div>
+    <div id="iframeContainer"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script>
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x000000, 0);
-        document.body.appendChild(renderer.domElement);
-
         // Matrix background setup
         const matrixCanvas = document.getElementById('matrixCanvas');
         matrixCanvas.width = window.innerWidth;
@@ -74,99 +102,84 @@
             return chars[Math.floor(Math.random() * chars.length)];
         }
 
-        // Cube setup
-        const geometry = new THREE.BoxGeometry(5, 5, 5);
+        // Website data
         const sites = [
-            'https://www.example.com',
             'https://en.wikipedia.org/wiki/Main_Page',
-            'https://github.com',
-            'https://stackoverflow.com',
-            'https://news.ycombinator.com'
+            'https://www.w3schools.com/html/',
+            'https://www.freecodecamp.org/learn/',
+            'https://www.khanacademy.org/computing',
+            'https://www.example.com'
         ];
         const siteNames = [
-            'Example',
             'Wikipedia',
-            'GitHub',
-            'Stack Overflow',
-            'Hacker News'
+            'W3Schools HTML',
+            'FreeCodeCamp',
+            'Khan Academy',
+            'Example'
+        ];
+        const fallbacks = [
+            'images/fallback1.png',
+            'images/fallback2.png',
+            'images/fallback3.png',
+            'images/fallback4.png',
+            'images/fallback5.png'
         ];
 
-        // Create colored materials as fallback
-        const colors = [0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0xFF00FF];
-        let materials = colors.map((color, i) => new THREE.MeshBasicMaterial({ color }));
-
-        // Iframe materials (optional)
-        let iframeMaterials = null;
-        let useIframes = false;
-
-        function createIframeMaterials() {
-            return sites.map((url, i) => {
-                const iframe = document.createElement('iframe');
-                iframe.src = url;
-                iframe.style.position = 'absolute';
-                iframe.style.width = '512px';
-                iframe.style.height = '512px';
-                iframe.style.opacity = '0';
-                document.body.appendChild(iframe);
-                const texture = new THREE.Texture(iframe);
-                texture.needsUpdate = true;
-                return new THREE.MeshBasicMaterial({ map: texture });
-            });
-        }
-
-        // Transparent material for 6th face
-        materials.push(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
-
-        const cube = new THREE.Mesh(geometry, materials);
-        scene.add(cube);
-        camera.position.z = 10;
-
-        // Animation variables
-        let targetRotation = { x: 0, y: 0 };
-        let currentRotation = { x: 0, y: 0 };
-        let autoRotate = true;
+        // Create iframes
+        const iframeContainer = document.getElementById('iframeContainer');
+        sites.forEach((url, index) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'iframeWrapper hidden';
+            const iframe = document.createElement('iframe');
+            iframe.src = url;
+            iframe.onload = () => updateStatus(`Loaded: ${siteNames[index]} (${url})`);
+            iframe.onerror = () => {
+                let fallbackContent;
+                try {
+                    const img = document.createElement('img');
+                    img.src = fallbacks[index];
+                    img.className = 'fallback';
+                    img.alt = `Fallback for ${siteNames[index]}`;
+                    img.onerror = () => {
+                        wrapper.innerHTML = `<div class="fallback">Unable to load ${siteNames[index]} (CORS restricted)</div>`;
+                        updateStatus(`Failed to load: ${siteNames[index]} (no image, showing text)`);
+                    };
+                    fallbackContent = img;
+                } catch (e) {
+                    fallbackContent = document.createElement('div');
+                    fallbackContent.className = 'fallback';
+                    fallbackContent.innerText = `Unable to load ${siteNames[index]} (CORS restricted)`;
+                    updateStatus(`Failed to load: ${siteNames[index]} (no image, showing text)`);
+                }
+                wrapper.innerHTML = '';
+                wrapper.appendChild(fallbackContent);
+                updateStatus(`Failed to load: ${siteNames[index]} (showing fallback)`);
+            };
+            wrapper.appendChild(iframe);
+            iframeContainer.appendChild(wrapper);
+        });
 
         // Page selection
+        let currentPage = 0;
         function selectPage(index) {
-            autoRotate = false;
-            const angles = [
-                { x: 0, y: 0 },           // Front
-                { x: 0, y: Math.PI / 2 }, // Right
-                { x: 0, y: -Math.PI / 2 },// Left
-                { x: Math.PI / 2, y: 0 }, // Top
-                { x: -Math.PI / 2, y: 0 } // Bottom
-            ];
-            targetRotation = angles[index];
+            const wrappers = document.querySelectorAll('.iframeWrapper');
+            wrappers[currentPage].className = 'iframeWrapper hidden';
+            wrappers[index].className = 'iframeWrapper visible';
+            currentPage = index;
             updateStatus(`Viewing: ${siteNames[index]} (${sites[index]})`);
         }
 
-        // Toggle iframes
-        function toggleIframes() {
-            useIframes = !useIframes;
-            if (useIframes) {
-                if (!iframeMaterials) {
-                    iframeMaterials = createIframeMaterials();
-                    iframeMaterials.push(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
-                }
-                cube.material = iframeMaterials;
-                updateStatus('Iframes enabled (some sites may not load due to CORS)');
-            } else {
-                cube.material = materials;
-                updateStatus('Iframes disabled, showing colored faces');
-            }
-            cube.material.needsUpdate = true;
-        }
+        // Initialize first page
+        selectPage(0);
 
         // Status update
         function updateStatus(message) {
             document.getElementById('status').innerText = message;
         }
 
-        // Animation loop
+        // Matrix animation loop
         function animate() {
             requestAnimationFrame(animate);
-
-            // Matrix effect
             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, matrixCanvas.width, matrixCanvas.height);
             ctx.fillStyle = '#0F0';
@@ -179,59 +192,16 @@
                     drops[i] = 0;
                 }
             }
-
-            if (autoRotate) {
-                cube.rotation.y += 0.01;
-            } else {
-                currentRotation.x += (targetRotation.x - currentRotation.x) * 0.1;
-                currentRotation.y += (targetRotation.y - currentRotation.y) * 0.1;
-                cube.rotation.x = currentRotation.x;
-                cube.rotation.y = currentRotation.y;
-            }
-
-            renderer.render(scene, camera);
         }
         animate();
 
         // Handle window resize
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
             matrixCanvas.width = window.innerWidth;
             matrixCanvas.height = window.innerHeight;
             columns = Math.floor(window.innerWidth / columnWidth);
             drops = Array(columns).fill(0).map(() => Math.floor(Math.random() * (window.innerHeight / 15)));
         });
-
-        // Mouse controls
-        let isDragging = false;
-        let previousMousePosition = { x: 0, y: 0 };
-
-        document.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            autoRotate = false;
-            previousMousePosition = { x: e.clientX, y: e.clientY };
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                const deltaMove = {
-                    x: e.clientX - previousMousePosition.x,
-                    y: e.clientY - previousMousePosition.y
-                };
-                targetRotation.y += deltaMove.x * 0.01;
-                targetRotation.x += deltaMove.y * 0.01;
-                previousMousePosition = { x: e.clientX, y: e.clientY };
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
-        });
-
-        // Initial status
-        updateStatus('Auto-rotating: Click buttons to view a page (Iframes disabled by default)');
     </script>
 </body>
 </html>
